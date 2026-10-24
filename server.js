@@ -46,6 +46,96 @@ function isHindiText(text) {
   return /\b(ki|kya|hai|hain|samne|saamne|aage|dikhao|dikh|batao|bataiye|dekh|dekho|yeh|ye|woh|wo|kahan|kidhar|mera|meri|mere|kaun|kitna|kitne|kaise|padh|padho|madad|namaste|shukriya|dhanyawad|ruko|bas|chup|phir|dobara|bata|likha|note|rupaye|paisa|paise|dawa|dawai|darwaza|kursi|table)\b/i.test(text);
 }
 
+/* ---- Indian Banknote Currency Parser & Validator (₹10, ₹50, ₹100, ₹500) ---- */
+export function parseCurrencyResult(rawText, isHindi = false) {
+  if (!rawText || typeof rawText !== 'string') {
+    return {
+      recognized: false,
+      denomination: null,
+      text: isHindi
+        ? 'नोट की स्पष्ट पहचान नहीं हो सकी। कृपया नोट को सीधा करके दोबारा प्रयास करें।'
+        : 'Unable to identify the note confidently. Please reposition the note and try again.',
+    };
+  }
+
+  const lower = rawText.toLowerCase();
+
+  // If model explicitly indicates unable/unclear/unrecognized
+  if (
+    lower.includes('unable to identify') ||
+    lower.includes('reposition') ||
+    lower.includes('not clearly') ||
+    lower.includes('cannot determine') ||
+    lower.includes('no note') ||
+    lower.includes('not visible') ||
+    lower.includes('not recognized') ||
+    lower.includes('uncertain') ||
+    rawText.includes('स्पष्ट पहचान नहीं') ||
+    rawText.includes('दोबारा प्रयास')
+  ) {
+    return {
+      recognized: false,
+      denomination: null,
+      text: isHindi
+        ? 'नोट की स्पष्ट पहचान नहीं हो सकी। कृपया नोट को सीधा करके दोबारा प्रयास करें।'
+        : 'Unable to identify the note confidently. Please reposition the note and try again.',
+    };
+  }
+
+  // 1. ₹500 (Stone grey / Red Fort)
+  if (/(500\b|five\s*hundred|पाँच\s*सौ|पांच\s*सौ)/iu.test(rawText)) {
+    return {
+      recognized: true,
+      denomination: 500,
+      text: isHindi
+        ? 'पहचाना गया नोट पाँच सौ रुपये का प्रतीत होता है।'
+        : 'The detected note appears to be five hundred rupees.',
+    };
+  }
+
+  // 2. ₹100 (Lavender / Rani ki Vav)
+  if (/(100\b|one\s*hundred|hundred\b|एक\s*सौ|सौ\s*रुपये)/iu.test(rawText)) {
+    return {
+      recognized: true,
+      denomination: 100,
+      text: isHindi
+        ? 'पहचाना गया नोट एक सौ रुपये का प्रतीत होता है।'
+        : 'The detected note appears to be one hundred rupees.',
+    };
+  }
+
+  // 3. ₹50 (Fluorescent blue / Hampi Chariot)
+  if (/(50\b|fifty\b|पचास)/iu.test(rawText)) {
+    return {
+      recognized: true,
+      denomination: 50,
+      text: isHindi
+        ? 'पहचाना गया नोट पचास रुपये का प्रतीत होता है।'
+        : 'The detected note appears to be fifty rupees.',
+    };
+  }
+
+  // 4. ₹10 (Chocolate brown / Konark Sun Temple)
+  if (/(10\b|ten\b|दस\s*रुपये|दस\b)/iu.test(rawText)) {
+    return {
+      recognized: true,
+      denomination: 10,
+      text: isHindi
+        ? 'पहचाना गया नोट दस रुपये का प्रतीत होता है।'
+        : 'The detected note appears to be ten rupees.',
+    };
+  }
+
+  // Unsupported denomination or ambiguous image
+  return {
+    recognized: false,
+    denomination: null,
+    text: isHindi
+      ? 'नोट की स्पष्ट पहचान नहीं हो सकी। कृपया नोट को सीधा करके दोबारा प्रयास करें।'
+      : 'Unable to identify the note confidently. Please reposition the note and try again.',
+  };
+}
+
 /* ---- System Prompt with High-Speed Concise Multilingual Rules ---- */
 function buildPrompt(question, mode, userLang) {
   const isHindi = userLang?.startsWith('hi') || isHindiText(question);
@@ -55,10 +145,26 @@ function buildPrompt(question, mode, userLang) {
   if (isCurrencyMode) {
     if (isHindi) {
       taskInstruction =
-        'आप एक दृष्टिबाधित व्यक्ति के सहायक हैं। छवि की जाँच करें। यदि कोई नोट (currency note/banknote) मौजूद है, तो उसका मूल्य (मूल्यवर्ग), मुद्रा, और वह असली दिखता है या संदिग्ध, स्पष्ट रूप से बताएं। फिर सामने की किसी भी बाधा या सुरक्षा खतरे का वर्णन करें। अपना उत्तर संक्षिप्त, सीधा और अधिकतम 3 सरल वाक्यों में दें।';
+        'आप एक दृष्टिबाधित व्यक्ति के लिए भारतीय मुद्रा (Indian Currency) पहचान सहायक हैं।\n' +
+        'छवि में दिख रहे भारतीय नोट की जांच करें। समर्थित मूल्यवर्ग: ₹10, ₹50, ₹100, ₹500।\n' +
+        '- ₹10: चॉकलेट भूरा, कोणार्क सूर्य मंदिर\n' +
+        '- ₹50: फ़िरोज़ा नीला, हम्पी रथ\n' +
+        '- ₹100: लैवेंडर, रानी की वाव\n' +
+        '- ₹500: स्टोन ग्रे, लाल किला\n' +
+        'यदि ₹10, ₹50, ₹100, या ₹500 का नोट स्पष्ट दिखाई दे रहा है, तो कहें: "पहचाना गया नोट [दस / पचास / एक सौ / पाँच सौ] रुपये का प्रतीत होता है।"\n' +
+        'यदि नोट अस्पष्ट, धुंधला, आंशिक रूप से कटा हुआ, या पहचाना नहीं जा सका, तो सटीक रूप से यह कहें: "नोट की स्पष्ट पहचान नहीं हो सकी। कृपया नोट को सीधा करके दोबारा प्रयास करें।"\n' +
+        'कभी भी गलत या मनगढ़ंत मूल्यवर्ग न बताएं।';
     } else {
       taskInstruction =
-        'You are an assistant for a visually impaired user. Examine the image. If a currency note/banknote is present, state its denomination, currency, and whether it appears genuine or suspicious. Then describe any immediate obstacles or safety hazards. Keep your answer brief, direct, and under 3 simple sentences.';
+        'You are an Indian currency recognition assistant for a blind or visually impaired user.\n' +
+        'Inspect the image for an Indian Rupee banknote. Supported denominations: ₹10, ₹50, ₹100, ₹500.\n' +
+        '- ₹10: Chocolate brown, Konark Sun Temple motif\n' +
+        '- ₹50: Fluorescent blue, Hampi chariot motif\n' +
+        '- ₹100: Lavender, Rani ki Vav motif\n' +
+        '- ₹500: Stone grey, Red Fort motif\n' +
+        'If a ₹10, ₹50, ₹100, or ₹500 note is clearly visible, reply: "The detected note appears to be [ten / fifty / one hundred / five hundred] rupees."\n' +
+        'If the note is blurry, unclear, partially visible, uncertain, or not a recognized Indian banknote, you MUST reply: "Unable to identify the note confidently. Please reposition the note and try again."\n' +
+        'Never invent or guess a denomination.';
     }
   } else if (mode === 'read') {
     if (isHindi) {
@@ -232,6 +338,15 @@ async function handleVisionRequest(req, res, next) {
     }
 
     if (answer) {
+      if (mode === 'currency') {
+        const isHindi = userLang?.startsWith('hi') || isHindiText(question);
+        const parsed = parseCurrencyResult(answer, isHindi);
+        return res.json({
+          answer: parsed.text,
+          currency: parsed,
+          success: true,
+        });
+      }
       return res.json({ answer, success: true });
     }
 

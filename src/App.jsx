@@ -291,16 +291,31 @@ function MainApp() {
   // User says "alert on" -> start camera detection alert
   const handleStartDetection = useCallback(() => {
     unlockAudio();
+    stopSpeaking();
     startDetection();
+    const isHindi = activeLang && activeLang.startsWith('hi');
+    const msg = isHindi ? 'अलर्ट चालू।' : 'Alerts on.';
     setStatusText('Obstacle radar active — beeping continuously');
-  }, [startDetection, unlockAudio]);
+    speak(msg);
+  }, [startDetection, stopSpeaking, activeLang, speak, unlockAudio]);
 
-  // User says "stop detection" or "alert off" -> stop camera detection alert
+  // User says "stop detection", "alert off", or "stop" -> stop camera detection alert completely
   const handleStopDetection = useCallback(() => {
     unlockAudio();
+    stopSpeaking();
+    abortAnalysis();
+    isBusyRef.current = false;
     stopDetection();
-    setStatusText('Listening hands-free. Say "Hey Aura" anytime.');
-  }, [stopDetection, unlockAudio]);
+
+    const isHindi = activeLang && activeLang.startsWith('hi');
+    const msg = isHindi ? 'डिटेक्शन बंद।' : 'Detection stopped.';
+    setStatusText(msg);
+    speak(msg, {
+      onFinish: () => {
+        setStatusText('Listening hands-free. Say "Hey Aura" anytime.');
+      },
+    });
+  }, [stopDetection, stopSpeaking, abortAnalysis, activeLang, speak, unlockAudio]);
 
   // Connect stable callback refs
   useEffect(() => {

@@ -404,6 +404,11 @@ export function useSpeech(callbacks = {}) {
             'unmute',
           ].includes(intent.type);
 
+          // Conversational user questions require complete sentence (isFinal) to avoid cutting off user mid-sentence
+          if (intent.type === 'question' && !isFinal) {
+            return;
+          }
+
           // Execute immediately if:
           // - It's a direct known action (e.g. "stop detection", "alert on", "check money", "ahead")
           // - OR wake word was detected
